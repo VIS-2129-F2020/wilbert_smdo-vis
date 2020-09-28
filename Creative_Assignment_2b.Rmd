@@ -1,0 +1,198 @@
+---
+title: "Assignment_1-VIS_2129"
+author: "Wilbert Sanchez"
+date: "9/15/2020"
+output: 
+  html_document:
+  toc: true 
+  toc_float: true
+  toc_collapsed: true
+  toc_depth: 3
+number_sections: true
+theme: lumen
+  
+---
+
+#Creative Assignment #2 - Wilbert Sanchez
+
+```{r setup, include=FALSE}
+library(tidyr)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(sf)
+library(dplyr)
+library(rnaturalearth)
+#install.packages(ggspatial)
+library(ggspatial)
+#install.packages("cartogram")
+library(cartogram)
+#install.packages("rio")
+library(rio)
+#devtools::install_github("ropenscilabs/rnaturalearthdata")
+#install.packages("rnaturalearthhires", repos = "http://packages.ropensci.org", type = "source")
+library(rnaturalearthhires)
+library(rnaturalearthdata)
+#install.packages("maps")
+library(maps)
+#install.packages("cartogram")
+library(cartogram)
+
+#reads Brazilian census and other database information
+#install.packages("devtools")
+#devtools::install_github("lucasmation/microdadosBrasil")
+library(microdadosBrasil)
+
+#install.packages("geobr")
+library(geobr)
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r set working_directories_paths, include=FALSE}
+
+#path1 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 1"
+#path2 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Github/Project 1/wilbert_smdo-vis/Microdados/MG"
+#path3 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Github/Project 1/wilbert_smdo-vis/Microdados"
+
+#DIR <- path3
+#dir(DIR) 
+#setwd(DIR)
+```
+
+
+## Geospatial Data Download in two packages: GeoBR and NaturalEarth
+
+## Reading data from GeoBR
+```{r geospatial_data_GeoBR, include=FALSE}
+
+#reading data for BR + Minas Gerais for geobr package
+brazil <-read_country(year = 2010)
+all_states <- read_state(year=2014)
+state_MG <- read_state(code_state="MG", year=2018)
+muni_Bocaina <- read_municipality( code_muni = 3107208, year=2010)
+muni_BH_all <- read_municipality(code_muni= "MG", year=2007)
+BH_censustract <- read_census_tract(code_tract = "MG", year = 2010)
+```
+
+## Reading Data from NaturalEarth
+```{r geospatial_data_NaturalEarth, include=TRUE}
+#reading data for BR from Naturalearth
+BR_states <- ne_states(country = "Brazil", returnclass = "sf")
+
+```
+
+
+## Reading different coordinate systems: Stereographic, Mercator, Robison & Sinusoidal
+```{r download_coordinate_reference_systems, include=TRUE}
+#Source https://spatialreference.org/ref/esri/?page=2 
+
+#Sphere Stereographic - in geometry, the stereographic projection is a particular mapping (function) that projects a sphere onto a plane. 
+ESRI_53026 <- "+proj=stere +lat_0=0 +lon_0=0 +k=1 +x_0=0 +y_0=0 +a=6371000 +b=6371000 +units=m +no_defs"
+
+#World Mercator - The Mercator projection (/mərˈkeɪtər/) is a cylindrical map projection. The map is thereby conformal. As a side effect, the Mercator projection inflates the size of objects away from the equator. 
+ESRI_54004 <- "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+
+#Robinson projection - The Robinson projection is a map projection of a world map which shows the entire world at once. It was specifically created in an attempt to find a good compromise to the problem of readily showing the whole globe as a flat image
+ESRI_53030 <- "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +a=6371000 +b=6371000 +units=m +no_defs"
+
+#Sinusoidal projection is a pseudocylindrical equal-area map projection, sometimes called the Sanson–Flamsteed or the Mercator equal-area projection. The projection represents the poles as points, as they are on the sphere, but the meridians and continents are distorted. 
+ESRI_54008 <- "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+
+```
+
+
+## Initial mapping in two packages: GeoBR and NaturalEarth
+```{r mapping-Brazil, include=TRUE}
+#plotting all the municipalities of MG
+no_axis <- theme(axis.title=element_blank(),
+                   axis.text=element_blank(),
+                   axis.ticks=element_blank())
+
+(All_BR <- ggplot() + geom_sf(data=all_states, fill="#e3242b", color="#f8f8f8", size=.15, show.legend = FALSE) + labs(subtitle="States", size=8) + theme_minimal() + no_axis)
+
+(MG_Map <- ggplot() +
+    geom_sf(data=muni_BH_all, fill="#82EEFD", color="#f8f8f8", size=.001, show.legend = FALSE) + labs(subtitle="Municipalities of Minas Gerais, 2000", size=8) + theme_minimal() + no_axis) 
+
+(Bocaina_Map <- ggplot() + geom_sf(data=muni_Bocaina, fill="#e3242b", color="#e3242b", size=.001, show.legend = FALSE) + labs(subtitle="Bocaina de Minas - Minas Gerais, 2007", size=8) + theme_minimal() + no_axis) 
+  
+#ggplot with Naturalearth
+(BR_Map <- ggplot(BR_states) + geom_sf() + theme_bw()) 
+#adding annotation scale
+(BR_Map + annotation_scale())
+
+#Stereographic
+(Stereographic <- ggplot(BR_states) + geom_sf() + coord_sf(crs = ESRI_53026 ) + theme_bw())
+#Mercator
+(Mercator <- ggplot(BR_states) + geom_sf() + coord_sf(crs = ESRI_54004 ) + theme_bw())
+#Robinson
+(Robinson <- ggplot(BR_states) + geom_sf() + coord_sf(crs = ESRI_53030 ) + theme_bw())
+#Sinusoidal
+(Sinusoidal <- ggplot(BR_states) + geom_sf() + coord_sf(crs = ESRI_54008) + theme_bw())
+
+```
+
+
+## Reading state data on Human Development from the Brazil Atlas and transforming it.
+```{r reading overlaying_data, include=TRUE}
+#Atlas do desenvolvimento humano
+human_dev_atlas <- rio::import("http://atlasbrasil.org.br/2013/data/rawData/Indicadores%20Atlas%20-%20RADAR%20IDHM.xlsx", which = "Dados")
+hda_2014 <- subset(human_dev_atlas, ANO == 2014)
+#all_states <-left_join(all_states, hda_2014, by = c("abbrev_state" = "NOME_AGREGA"))
+
+#join data sets for naturalearth
+names(hda_2014)[2] <- "postal"
+joined_BR_statesa <- dplyr::inner_join(hda_2014, BR_states, copy = TRUE)
+
+#transformed => st_transform
+states_transformed_Merc <- BR_states%>% st_transform(crs = ESRI_54004)
+
+#joined with HDA data
+joined_BR_statesb <- dplyr::inner_join(states_transformed_Merc, hda_2014, copy = TRUE)
+
+```
+
+
+## Mapping in GeoBR and NaturalEarth with Atlas Data
+```{r plots+data, include=TRUE}
+
+#Plotting with GeoBR
+#(plot1_life_expectancy <- ggplot() +
+   # geom_sf(data=all_states, aes(fill=ESPVIDA), color= NA, size=.15) + labs(subtitle="Life Expectancy at birth, Brazilian States, 2014", size=8) + scale_fill_distiller(palette = "Blues", name="Life Expectancy", limits = c(65,80)) + theme_minimal() + no_axis)
+
+
+#Chloropleth using naturalearth
+#summary(joined_BR_statesa$ESPVIDA)
+
+(life_expect <- ggplot(joined_BR_statesb, aes(fill = ESPVIDA)) + geom_sf(color = NA) +  scale_fill_viridis_c(name = "Life Expectancy at birth, Brazilian States, 2014", breaks = seq(60, 80, by = 2), labels = formatC(seq(60, 80, by = 2), big.mark = ",", format = "f", digits = 0)) + theme_minimal() + theme(legend.background = element_blank()) )
+
+#cartogram - Continuous
+joined_cartogram <- joined_BR_statesb %>%
+  cartogram_cont("POP")
+
+(life_expect <- ggplot(joined_cartogram, aes(fill = ESPVIDA)) + geom_sf(color = NA) +  scale_fill_viridis_c(name = "Life Expectancy at birth,\nBrazilian States - \nSized by Population, 2014", breaks = seq(60, 80, by = 2), labels = formatC(seq(60, 80, by = 2), big.mark = ",", format = "f", digits = 0)) + theme_minimal() + theme(legend.background = element_blank()) )
+
+
+#cartogram Non-Continuous
+joined_cartogram_n <- joined_BR_statesb %>%
+  cartogram_ncont("POP")
+
+(life_expect <- ggplot(joined_cartogram_n, aes(fill = ESPVIDA)) + geom_sf(color = NA) +  scale_fill_viridis_c(name = "Life Expectancy at birth,\nBrazilian States - \nSized by Population, 2014", breaks = seq(60, 80, by = 2), labels = formatC(seq(60, 80, by = 2), big.mark = ",", format = "f", digits = 0)) + theme_minimal() + theme(legend.background = element_blank()) )
+
+
+#cartogram Dorling
+joined_cartogram_dorling <- joined_BR_statesb %>%
+  cartogram_dorling("POP")
+
+(life_expect <- ggplot(joined_cartogram_dorling, aes(fill = ESPVIDA)) + geom_sf(color = NA) +  scale_fill_viridis_c(name = "Life Expectancy at birth,\nBrazilian States - \nSized by Population, 2014", breaks = seq(60, 80, by = 2), labels = formatC(seq(60, 80, by = 2), big.mark = ",", format = "f", digits = 0)) + theme_minimal() + theme(legend.background = element_blank()) )
+
+#Proportional Symbol
+joined_cartogram_centroids <- joined_BR_statesb %>%
+  st_centroid()
+
+(life_expect <- ggplot(states_transformed_Merc) + geom_sf(fill = NA, color = "gray") +  geom_sf(data = joined_cartogram_centroids, aes (size = ESPVIDA), alpha = 0.5, color = "red") + scale_size_continuous(name = "Life Expectancy at birth,\nBrazilian States - \nSized by Population, 2014", breaks = seq(60, 80, by = 2), labels = formatC(seq(60, 80, by = 2), big.mark = ",", format = "f", digits = 0), range = c(0,20)) + theme_void())
+
+```
