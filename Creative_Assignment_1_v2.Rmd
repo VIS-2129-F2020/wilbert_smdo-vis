@@ -1,0 +1,201 @@
+---
+title: "Assignment_1-VIS_2129"
+author: "Wilbert Sanchez"
+date: "9/15/2020"
+output: html_document
+---
+## Wilbert Sanchez - Creative Assignment - 1
+## Loading libraries
+
+```{r setup, include=FALSE}
+#remotes::install_github("walkerke/tidycensus")
+
+library(ggplot2)
+library(tidyverse)
+library(foreign)
+library(arm)
+library(dplyr)
+library(magrittr)
+library(stringr)
+library(plotly)
+library(ggthemes)
+library(tidycensus)
+library(htmlwidgets)
+#install.packages("ggpubr")
+#if(!require(devtools)) install.packages("devtools")
+#devtools::install_github("kassambara/ggpubr")
+library(ggpubr) 
+
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## Creating paths & Directory
+
+```{r set working_directories_paths, include=FALSE}
+
+path1 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 1"
+
+#DIR <- path1
+#dir(DIR) 
+#setwd(DIR)
+```
+
+
+```{r Census_login, include=FALSE}
+
+#logging in census
+census_key <- '0b5a2659449902fb75cdf483e2aec5a84d09c128'
+census_api_key(census_key, overwrite = TRUE, install = TRUE) # store the key
+#readRenviron("~/.Renviron")
+
+```
+
+
+```{r reading_macro_vars, include=FALSE}
+
+#personal
+person_vars_2018 <- pums_variables %>%
+  distinct(year, survey, var_code, 
+           var_label, data_type, level) %>%
+  filter(level == "person", year == 2018, survey == "acs1")
+
+#household
+hh_vars_2018 <- pums_variables %>%
+  distinct(year, survey, var_code, 
+           var_label, data_type, level) %>%
+  filter(level == "housing", year == 2018, survey == "acs1")
+area_vars_2018 <- load_variables(2018, "acs1")
+area_vars_2010 <- load_variables(2010, "sf1")
+
+person_data <- get_pums(variables = c("TEN", 
+                                      "SEX", 
+                                      "PINCP", 
+                                      "WKHP", 
+                                      "JWMNP"),
+                        state = "TX", 
+                        year = 2018, 
+                        survey = "acs1",
+                        recode = TRUE) %>%
+  filter(JWMNP > 0) %>%
+  select(TEN_label, SEX_label, PINCP, WKHP, JWMNP)
+
+help(get_pums)
+
+
+```
+
+## Loading data required and creating categorical variables.
+
+```{r selecting_info_needed, include=TRUE}
+
+#vars_selected_household <- c("HINCP", "MRGX")
+#vars_selected_person <- c("RAC1P", "SCHL", "MIL", "CIT")
+#hampden_MA <- get_acs(geography = "county", variables = c("SCHL"), state = "MA", county = "Hampden", year = 2018, survey = "acs1")
+
+#extracting variables in wide format
+hampden_MA1 <- get_acs(geography = "tract", variables = c(medincome = "B19013_001", grad_degree = "B06009_005", total_pops = "B01003_001", housing_units_mortgage = "B25081_001", edu_attain_over_25yrs_bachelor = "B15003_022"), output = "wide",  state = "MA", county = "Hampden", year = 2018)
+
+hampden_MA1$perc_pops_grad <- "NA"
+column_names <- c("perc_pops_grad")
+
+hampden_MA1$grad_degreeE_numeric <- as.numeric(hampden_MA1$grad_degreeE)
+hampden_MA1$total_popsE_numeric <- as.numeric(hampden_MA1$total_popsE)
+hampden_MA1$total_HU_mortgage_numeric <- as.numeric(hampden_MA1$housing_units_mortgageE)
+hampden_MA1$total_pops_numeric <- as.numeric(hampden_MA1$total_popsE)
+hampden_MA1$medincome_numeric <- as.numeric(hampden_MA1$medincomeE)
+
+#converting income into categorical variable
+hampden_MA1$Income_categories <- cut(hampden_MA1$medincome_numeric, breaks=c(0,55000,73900,200000), labels = c("A","B","C"))
+
+
+
+hampden_MA1$perc_pops_grad <- (hampden_MA1$grad_degreeE_numeric / hampden_MA1$total_popsE_numeric)   
+
+#converting college graduate %s into categorical variables
+summary(hampden_MA1$perc_pops_grad)
+hampden_MA1$college_grad_perc <- cut(hampden_MA1$perc_pops_grad, breaks=c(0,.06,.15,.25), labels = c("A","B","C"))
+
+
+#creating a final dataset
+hampden_final <- hampden_MA1 %>% select(GEOID, NAME, grad_degreeE_numeric,total_popsE_numeric, total_HU_mortgage_numeric,total_pops_numeric, medincome_numeric,Income_categories, perc_pops_grad, college_grad_perc)
+
+#summary(hampden_final)
+
+```
+
+## Plotting data
+
+```{r plotting, include=TRUE}
+
+#understanding the distribution of income
+(histogram <- ggplot(hampden_final, aes(x=medincome_numeric)) + geom_histogram() + labs(x = "Median Income", y = "Count - Frequency", subtitle = "Distribution by Census Tract", title = "Hampden County: Median Annual Income"))
+
+#income vs educational attainment
+(scatter1 <- ggplot(data = hampden_final) + geom_point(mapping = aes(x =  perc_pops_grad, y = medincome_numeric)) + labs(x = "% of Total Population with a Graduate Degree", y = "Median Income", subtitle = "Distribution by Census Tract", title = "Hampden County: Pops with Graduate Degree vs\n Educational vs Median Income"))
+
+#pops vs mortgage
+(scatter2 <- ggplot(data = hampden_final) + geom_point(mapping = aes(x =  total_pops_numeric, y = total_HU_mortgage_numeric)) + labs(x = "Total Population", y = "Total Mortgages", subtitle = "Distribution by Census Tract", title = "Hampden County: Total Population vs \nTotal Mortgage Numbers") + facet_wrap( ~ Income_categories, nrow = 2))
+
+#pops vs mortgage adjusted for educational attainment categories
+(scatter3 <- ggplot(data = hampden_final) + geom_point(mapping = aes(x =  total_pops_numeric, y = total_HU_mortgage_numeric, color = college_grad_perc)) + labs(x = "Total Population", y = "Total Mortgages", subtitle = "Distribution by Census Tract", title = "Hampden County: Total Population vs Total Mortgage\nNumbers Adjusted for educational attainment categories"))
+
+
+(scatter4 <- ggplot(data = hampden_final) + geom_point(mapping = aes(x =  total_pops_numeric, y = total_HU_mortgage_numeric, colour = medincome_numeric)) + labs(x = "Total Population", y = "Total Mortgages", subtitle = "Distribution by Census Tract", title = "Hampden County: Total Population vs \n Total Mortgage Numbers") + geom_smooth(aes(x =  total_pops_numeric, y = total_HU_mortgage_numeric))) 
+
+#lollipop chart utilizing ggpubr
+lollipop <- ggdotchart(hampden_final, x = "GEOID", y = "total_pops_numeric", color = "Income_categories", palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+                        sorting = "ascending", add = "segments", ggtheme = theme_pubr()) + labs(x = "GEOID", y = "Total Population", title = "Hampden County: Ranked Population by Census Tract") + theme(axis.text=element_text(size=4))
+
+#same graph as above with some x/y axis modifications
+(lollipop2 <- lollipop + scale_y_continuous(limits=c(0, 8500))+theme(axis.text.x = element_text(angle=45)))
+
+ggplotly(lollipop2, tooltip = "text") %>% style(hoveron = "fill")
+
+
+#polar coordinates
+polar_bar <- ggplot(hampden_final, aes(x=as.factor(GEOID), y= medincome_numeric)) + geom_bar(stat="identity", fill=alpha("blue", 0.3)) + ylim(-100,200000) +theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(rep(-2,4), "cm"))+ coord_polar(start = 0)
+
+#polar_bar + labs(subtitle = "Distribution by Census Tract", title = "Hampden County: Median Annual Income Polar Bar Graph")
+
+#preparing data to add labels
+hampden_final$label_data <- hampden_final$medincome_numeric
+(number_of_bar <- nrow(hampden_final))
+hampden_final$id <- seq(1,number_of_bar)
+hampden_final$angle <-  90 - 360 * (hampden_final$id-0.5) /number_of_bar
+hampden_final$hjust<-ifelse( hampden_final$angle < -90, 1, 0)
+hampden_final$angle<-ifelse(hampden_final$angle < -90, hampden_final$angle +180, hampden_final$angle)
+
+
+(polar_bar2 <- ggplot(hampden_final, aes(x=as.factor(GEOID), y=medincome_numeric)) + 
+    geom_bar(stat="identity", fill=alpha("skyblue", 0.7)) + 
+    ylim(-100,200000) +
+    theme_minimal() +
+    theme(axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(rep(-1,4), "cm")) +
+   coord_polar(start = 0) 
++geom_text(data=hampden_final, aes(x=GEOID, y=medincome_numeric+10, label=GEOID, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2, angle= hampden_final$angle, inherit.aes = FALSE ))
+
+#heatmap
+#constructing a numeric matrix
+hampden_numeric <- hampden_final %>% select(GEOID, grad_degreeE_numeric,total_popsE_numeric, total_HU_mortgage_numeric, medincome_numeric)
+heatmap(data.matrix(hampden_numeric, rownames.force = NA)) 
+help(heatmap)
+
+```
+
+
+```{r saving_data_sets, include=FALSE}
+#write.csv("dataframe","filename.csv")
+
+
+```
