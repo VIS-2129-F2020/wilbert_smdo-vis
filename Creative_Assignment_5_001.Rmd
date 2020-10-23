@@ -1,0 +1,97 @@
+---
+title: "VIS_2129_Creative_Assignment_5"
+author: "Wilbert Sanchez"
+date: "10/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#install.packages("osmdata")
+library(osmdata)
+#install.packages("opentripplanner")
+library(opentripplanner)
+library(ggplot2)
+library(tidyverse)
+library(sf)
+library(dplyr)
+library(ggthemes)
+library(ggspatial)
+#install.packages("tiff")
+library(tiff)
+#install.packages("raster")
+library(raster)
+
+rm(list = ls())
+
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Setting up paths
+```{r setup_admin, message = FALSE, warning = FALSE, include=FALSE}
+path1 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 5/"
+
+foldername_1 <- "OTP"
+foldername_2 <- "graphs"
+foldername_3 <- "default"
+
+#creating folders - ONE Time Run ONLY
+#dir.create(paste0(path1,foldername_1))
+#dir.create(paste0(path1,foldername_1,"/",foldername_2))
+#dir.create(paste0(path1,foldername_1,"/",foldername_2,"/", #foldername_3))
+
+
+path2 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/creative Assignment 5/OTP/graphs/default/"
+path3 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/creative Assignment 5/OTP"
+
+```
+
+### Setting up the planes to Brazilian features
+
+```{r setup_Planes, include=FALSE}
+#adding plane
+#EPSG: 5533 -> https://epsg.io/5533
+EPSG_5533 <- "+proj=utm +zone=23 +south +ellps=aust_SA +towgs84=-67.35,3.88,-38.22,0,0,0,0 +units=m +no_defs"
+```
+
+
+#Loading OSM data
+```{r OSM_Data_Load-up, include=FALSE}
+#getting street data
+opq(bbox = 'Mirantao, Minas Gerais') %>%
+  add_osm_feature(key = 'highway') %>%
+  osmdata_xml(file = paste0(path2,'Mirantao_streets.osm'))
+
+Mirantao_street_features <- opq(bbox = 'Mirantao, Minas Gerais') %>%
+  add_osm_feature(key = 'highway') %>%
+  osmdata_sf()
+
+Mirantao_streets2 <- Mirantao_street_features$osm_lines %>% st_transform(crs = EPSG_5533)
+
+#map1 - Mirantao
+(Mirantao_street_map2 <- ggplot(Mirantao_streets2) 
+  + geom_sf() 
+  + labs(subtitle="Map 1 - Mirantao", size=8)
+  + theme_map()
+  )
+
+
+```
+
+#Reading TIF Map Created in QGIS
+```{r QGIS_Data_Load-up, include=FALSE}
+#getting street data
+
+qgisfilename <- "Mirantao_Map_modified.tif"
+
+
+#qgisfile <- readTIFF(system.file("img", paste0(path1,qgisfilename), package = "tiff"))
+
+qgisfile <- raster(x = paste0(path1,qgisfilename))
+crs(qgisfile)
+
+
+help("readTIFF")
+
+
+```
