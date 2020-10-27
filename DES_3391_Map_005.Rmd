@@ -1,0 +1,151 @@
+---
+title: "DES3391_Map"
+author: "Wilbert Sanchez"
+date: "10/26/2020"
+output: html_document
+---
+
+#Setting up the Admin
+```{r setup, include=FALSE}
+library(tidyverse)
+library(sf)
+library(leaflet)
+#install.packages("htmltools")
+library(htmltools)
+#install.packages("htmlwidgets")
+library(htmlwidgets)
+#install.packages("geojsonio")
+library(geojsonio)
+#install.packages("leaflet.extras")
+library(leaflet.extras)
+#install.packages("rgdal")
+library(rgdal)
+library(fs)
+#install.packages("kml")
+library(kml)
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Admin - Setting up paths
+```{r Reading, include=FALSE}
+path_1 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/creative Assignment 5/KML Files/"
+path_2 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/creative Assignment 5/KML Files/Consolidated_Files/"
+path_3 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/creative Assignment 5/Contour/"
+
+
+```
+
+#Reading KML files
+```{r Reading, include=FALSE}
+#it seems like it pickgrass_sf <- read_sf(paste0(path_2,"grass.zip/", "doc.kml"))s up only one layer (folder), but maybe I can get various folders 
+
+#Reading perimeter
+Perimter_kml <- readr::read_file(paste0(path_1,"Global - Perimeter.kml"))
+Perimter_kml_st <- st_read(paste0(path_1,"Global - Perimeter.kml"))
+(Total_Valley_Area <- st_area(Perimter_kml_st)/1000) # valley area in hras
+
+#Reading Crop
+Crop_kml <- readr::read_file(paste0(path_2,"Crop.kml"))
+
+#Reading Transitional Forest Areas
+TF_kml <- readr::read_file(paste0(path_2,"TF.kml"))
+
+#Reading Homes
+Homes_kml <- readr::read_file(paste0(path_2,"Homes.kml"))
+
+#Reading Grass (trying to read in different versions since I want to manipulate the KML file)
+Grass_kml <- readr::read_file(paste0(path_2,"Grass.kml"))
+Grass_kml_st <- st_read(paste0(path_2,"Grass.kml"))
+#Grass_kml_gdal <- rgdal::readOGR(paste0(path_2,"Grass.kml"))
+
+Grass_kml_st_hras <- Grass_kml_st %>% mutate(hectares = as.numeric(st_area(geometry)/1000))#adding a new column to the file in order to have area
+
+grass_pts <- st_centroid(Grass_kml_st_hras)#centroids for Grass
+
+grass_pts$label <-  paste(grass_pts$Name, "<br>", prettyNum(grass_pts$hectares, digits = 1), "hras") %>% lapply(htmltools::HTML)
+
+#Reading Contour
+Contours <- readOGR(paste0(path_3,"Contours_Elevation.shp"), GDAL1_integer64_policy = TRUE)
+```
+
+#Mapping
+```{r Mapping, include=FALSE}
+
+#Setview
+Longitude <- -44.52583333
+Latitude <- -22.22027778
+
+#Rectangle Bounds
+lng1_fix <- Longitude*.998
+lat1_fix <- Latitude*.999 
+lng2_fix <- Longitude*1.002
+lat2_fix <- Latitude*1.003
+
+#Color Palettes
+Colour_Crops <- "gray"
+Colour_Forest <-"#234F1E"
+Colour_Grass <- "#FFEA61"
+Colour_Homes <- "red"
+Colour_TF <-"#66a266" 
+Colour_VP <- "black"
+Colour_VP_fill <- "#234F1E"
+
+
+#palette for a legend
+p = colorFactor(palette = c("#234F1E","#66a266","#FFEA61","gray", "red", "black"),domain = c("Forest","Transitional Forest","Grass","Crops", "Homes", "Valley Perimeter" ),ordered = T)
+
+help("addCircles")
+help("addMarkers")
+
+#Elevation Map
+(object1 <- leaflet() %>% setView(Longitude,Latitude, 12) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  #addPolygons(data = Contours, stroke = TRUE, color = "#197419", weight = .5, label = ~ELEV, popup =~ELEV, fillOpacity = "transparent", fill = FALSE) %>%
+  addKML(Perimter_kml, stroke = TRUE, weight = 1, color = "black", opacity = FALSE, fillColor = "transparent")%>%
+  addKML(TF_kml, stroke = FALSE, fillColor = "#66a266", fillOpacity = 1) %>%
+  addKML(Grass_kml, stroke = FALSE, fillColor = "#FFEA61", fillOpacity = .5) %>%
+  addCircles(data = grass_pts, color = Colour_VP, stroke = TRUE, weight = 1, opacity = .5, fill = FALSE, popup = ~grass_pts$label)%>%  
+  addKML(Crop_kml, stroke = FALSE, fillColor = "gray", fillOpacity = 5) %>%
+  addKML(Homes_kml, stroke = FALSE, fillColor = "red", fillOpacity = 10) %>%
+  #addKML(Grass_all_kml, stroke = FALSE, fillColor = "#FFEA61", fillOpacity = .5, markerOptions = markerOptions(radius = 1), labelOptions = leaflet::labelOptions(interactive = TRUE)) %>% 
+  addControl("Vale da Prata / Silver Valley <BR> (Minas Gerais, Brazil): <BR> Land Utilization & Elevation Contour Map", position = "topleft") %>%
+  addLegend(position = "bottomleft",pal = p, values = c("Forest","Transitional Forest","Grass","Crops", "Homes", "Valley Perimeter"),title = "Land Utilization") %>%
+setMaxBounds(lng1 = lng1_fix, lat1 = lat1_fix, lng2 = lng2_fix, lat2 = lat2_fix)%>%
+  addRectangles(lng1 = lng1_fix, lat1 = lat1_fix, lng2 = lng2_fix, lat2 = lat2_fix, fillColor = "transparent"))
+
+#Alternative BaseMaps
+BaseMap1 <- providers$CartoDB.Positron #current
+BaseMap4 <- providers$Esri.WorldShadedRelief #this works, but it has a zoom limitation, although it is not so "busy" and helps outline better
+BaseMap6 <- providers$OpenTopoMap #this shows some innacuracies relative to the green
+
+
+#do not work: BasemapAT.orthofoto, NASAGIBS.ModisTerraBands367CR, HikeBike.HillShading, GeoportailFrance.orthos (zoom issues)
+
+
+
+
+#Earth Map
+(object2 <- leaflet() %>% setView(Longitude,Latitude, 12) %>%
+  addProviderTiles(BaseMap6) %>%
+  addKML(Perimter_kml, stroke = TRUE, weight = 1, color = Colour_VP, fillOpacity = .7, fillColor = Colour_VP_fill)%>%
+  addKML(TF_kml, stroke = FALSE, fillColor = Colour_TF, fillOpacity = 1) %>%
+  addKML(Grass_kml, stroke = FALSE, fillColor = Colour_Grass, fillOpacity = .5, labelOptions = leaflet::labelOptions(interactive = TRUE)) %>%
+  addKML(Crop_kml, stroke = FALSE, fillColor = Colour_Crops, fillOpacity = 5) %>%
+  addKML(Homes_kml, stroke = FALSE, fillColor = Colour_Homes, fillOpacity = 10) %>%
+  #addKML(Grass_all_kml, stroke = FALSE, fillColor = "#FFEA61", fillOpacity = .5, markerOptions = markerOptions(radius = 1), labelOptions = leaflet::labelOptions(interactive = TRUE)) %>% 
+  addControl("Vale da Prata / Silver Valley <BR> (Minas Gerais, Brazil): <BR> Land Utilization & Elevation Contour Map", position = "topleft") %>%
+  addLegend(position = "bottomleft",pal = p, values = c("Forest","Transitional Forest","Grass","Crops", "Homes", "Valley Perimeter"),title = "Land Utilization") %>%
+setMaxBounds(lng1 = lng1_fix, lat1 = lat1_fix, lng2 = lng2_fix, lat2 = lat2_fix)%>%
+  addRectangles(lng1 = lng1_fix, lat1 = lat1_fix, lng2 = lng2_fix, lat2 = lat2_fix, fillColor = "transparent", color = "black"))
+
+help(st_box)
+help("addRectangles")
+help("addPolygons")
+help("addKML")
+help("labelOptions")
+help("addControl")
+
+#All <- All %>% mutate(hectares = as.numeric(st_area(geometry)/1000)) 
+
+```
