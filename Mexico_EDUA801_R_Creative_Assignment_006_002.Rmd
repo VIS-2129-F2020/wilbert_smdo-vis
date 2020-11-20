@@ -1,0 +1,145 @@
+---
+title: "Mexico_A801"
+author: "Wilbert Sanchez"
+date: "9/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(foreign)
+library(dplyr)
+library(magrittr)
+library(stringr)
+library(plotly)
+library(ggthemes)
+library(htmlwidgets)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(raster)
+library(gstat)
+library(spatial)
+library(arm)
+library(readxl)
+#mapping package
+#if (!require("devtools")) {install.packages("devtools")}
+#devtools::install_github("diegovalle/mxmaps")
+library("mxmaps")
+
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Analyzing migration rates across various municipalities in the Southern Mexican State of Quintana Roo. I am interested in understanding which municipalities are the net-winners / losers across the state. 
+
+## For the purpose of this analysis, I only used 10 of the municipalities, since #11 has been recently created (2016) and there is no migration data from the 2015 Mexican Inter-census survey.
+
+#Admin Paths
+```{r Paths}
+
+path1 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 6/"
+path2 <- "D:/EDUA801/Stats_QR/"
+path3 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 6/Muni_2012gw/"
+
+```
+
+
+
+#Reading Municipal_Data
+```{r reading_excel_data_Education}
+
+WGS84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+
+filename4 <- "muni_2012gw.shp" #original source: https://datacatalog.worldbank.org/dataset/mexico-municipalities-2012. Map Projection -> GCS_WGS_1984
+
+#extracting shapefiles
+muni_shape <- st_read(paste0(path3,filename4))
+
+#INEGI Codes. There was a recent (2016) creation of a new municipality - Puerto Morelos (23011). This is excluded from the QR_muni_shape which is a database from 2012. Also the INEGI book  - Principales resultados de la Encuesta Intercensal 2015 does not include it. For the purpose of this analysis, we will exclude it.
+
+QR_muni_wPM <- c(23001, 23002, 23003, 23004, 23005, 23006, 23007, 23008, 23009, 23010, 23011)
+QR_muni_w_out_PM <- c(23001, 23002, 23003, 23004, 23005, 23006, 23007, 23008, 23009, 23010, 23011)
+#excludes Puerto Morelos
+QR_muni_shape <- muni_shape %>% filter(CVE_ENT == 23)
+
+#excludes Cozumel, which is an island
+QR_muni_shape <- QR_muni_shape[-c(3),]
+
+```
+
+
+#Data Wrangling
+```{r Adding_new_Data}
+
+#of people that migrated into the municipality from another country or municipality
+
+#rearraning data in order to ease adding information
+QR_muni_shape %<>% arrange(CVE_MUN) 
+
+#Source: http://coespo.qroo.gob.mx/Descargas/doc/Encuesta%20Intercensal/Principales%20Resultados%20de%20la%20Encuesta%20Intercensal%202015%20Q%20Roo.pdf. Pg 14, # of people in a municipality that are from outside that municipality
+migrants_info <- c(67.8, 63, 55, 50.3, 47.5, 39.2, 37.2, 36.1, 28.1, 13.8)
+migrants_info_ex_Coz <- c(63, 55, 50.3, 47.5, 39.2, 37.2, 36.1, 28.1, 13.8)
+
+QR_muni_shape <- QR_muni_shape %>% mutate(migrants_per = migrants_info_ex_Coz) 
+
+QR_muni_shape$label <- 
+  paste(QR_muni_shape$NOM_MUN, "<br>", QR_muni_shape$migrants_per, "% of migrants in the municipality") %>%  lapply(htmltools::HTML)
+
+
+```
+
+
+# Mapping
+```{r Initial_Maps_QR}
+
+leaflet(QR_muni_shape) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(highlightOptions = highlightOptions(fillColor = "yellow", fillOpacity = 1), label = ~label, weight = 1)
+
+#colour palette
+pal <- colorNumeric("viridis", domain = QR_muni_shape$migrants_per, na.color = "#00000000")
+
+
+leaflet(QR_muni_shape) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(highlightOptions = highlightOptions(fillOpacity = 1), label = ~label, fillColor = ~pal(migrants_per), weight = 1, color = "black") %>% 
+  addLegend(pal = pal, values = ~migrants_per, bins = 5, opacity = 0.7, title = "Percentage Immigrants <br> per Municipality (%)", position = "bottomright")
+
+#forming the centroids
+qr_muni_points <- st_centroid(QR_muni_shape) %>% st_transform(WGS84)
+
+#mapping the centroids
+leaflet(qr_muni_points) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addCircles(label = ~label, fillColor = ~pal(migrants_per), stroke = FALSE, radius = 5000, fillOpacity = 1) %>% 
+  addLegend(pal = pal, values = ~migrants_per, bins = 5, opacity = 0.7, title = "Percentage Immigrants <br> per Municipality (%)", position = "bottomright")
+
+#transforming the data sets into spatial
+
+qr_muni_points_sp <- qr_muni_points %>%  st_transform(WGS84) %>% as_Spatial()
+QR_muni_shape_sp <- QR_muni_shape %>%  st_transform(WGS84)%>% as_Spatial()
+
+#this is creating an empty layer
+QR_muni_shape_sp_raster <- raster(QR_muni_shape_sp, res=10)
+
+#finds the values in between the the points
+gs <- gstat(formula=migrants_per~1, locations=qr_muni_points_sp)
+
+#the interpolated points are set into the empty raster layer
+idw_interp <- interpolate(QR_muni_shape_sp_raster, gs)
+
+#mask bounds the the interpolated data into your shape 
+idw_interp_clip <- mask(idw_interp, QR_muni_shape_sp)
+
+leaflet(qr_muni_points) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addRasterImage(idw_interp_clip, colors = pal, opacity = 0.8) %>%
+  addLegend(pal = pal, values = ~migrants_per, bins = 5, opacity = 0.7, title = "Percentage Immigrants <br> per Municipality (%)", position = "bottomright")
+
+
+```
+
+
+
