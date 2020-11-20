@@ -32,30 +32,20 @@ rm(list = ls())
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Analyzing migration rates across various municipalities in the Southern Mexican State of Quintana Roo. I am interested in understanding which municipalities are the net-winners / losers across the state. 
+Analyzing migration rates across various municipalities in the Southern Mexican State of Quintana Roo. I am interested in understanding which municipalities are the net-winners / losers across the state. 
 
-## For the purpose of this analysis, I only used 10 of the municipalities, since #11 has been recently created (2016) and there is no migration data from the 2015 Mexican Inter-census survey.
+For the purpose of this analysis, I only used 10 of the municipalities, since #11 has been recently created (2016) and there is no migration data from the 2015 Mexican Inter-census survey.
 
-#Admin Paths
-```{r Paths}
+For this exact code to work, create a folder called "Muni_2012gw" in your working directory and extract the contents of the zipped file downloaded from [https://development-data-hub-s3-public.s3.amazonaws.com/ddhfiles/98567/muni_2012gw.zip](https://development-data-hub-s3-public.s3.amazonaws.com/ddhfiles/98567/muni_2012gw.zip) to there.
 
-path1 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 6/"
-path2 <- "D:/EDUA801/Stats_QR/"
-path3 <- "C:/Users/Wilbert Sanchez/Desktop/VIS 2129/Assignment/Creative Assignment 6/Muni_2012gw/"
-
-```
-
-
-
-#Reading Municipal_Data
+# Reading Municipal_Data
 ```{r reading_excel_data_Education}
 
 WGS84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
 
-filename4 <- "muni_2012gw.shp" #original source: https://datacatalog.worldbank.org/dataset/mexico-municipalities-2012. Map Projection -> GCS_WGS_1984
 
 #extracting shapefiles
-muni_shape <- st_read(paste0(path3,filename4))
+muni_shape <- st_read("Muni_2012gw/Muni_2012gw.shp")
 
 #INEGI Codes. There was a recent (2016) creation of a new municipality - Puerto Morelos (23011). This is excluded from the QR_muni_shape which is a database from 2012. Also the INEGI book  - Principales resultados de la Encuesta Intercensal 2015 does not include it. For the purpose of this analysis, we will exclude it.
 
@@ -92,12 +82,19 @@ QR_muni_shape$label <-
 
 
 # Mapping
+
+Initial map showing baoundaries
+
 ```{r Initial_Maps_QR}
 
 leaflet(QR_muni_shape) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
   addPolygons(highlightOptions = highlightOptions(fillColor = "yellow", fillOpacity = 1), label = ~label, weight = 1)
+```
 
+Map with colors in indicate migration
+
+```{r}
 #colour palette
 pal <- colorNumeric("viridis", domain = QR_muni_shape$migrants_per, na.color = "#00000000")
 
@@ -106,9 +103,17 @@ leaflet(QR_muni_shape) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
   addPolygons(highlightOptions = highlightOptions(fillOpacity = 1), label = ~label, fillColor = ~pal(migrants_per), weight = 1, color = "black") %>% 
   addLegend(pal = pal, values = ~migrants_per, bins = 5, opacity = 0.7, title = "Percentage Immigrants <br> per Municipality (%)", position = "bottomright")
+```  
+  
+Representing areas as centroid points  
+```{r, message = FALSE, warning=FALSE}
 
-#forming the centroids
-qr_muni_points <- st_centroid(QR_muni_shape) %>% st_transform(WGS84)
+# forming the centroids transform to EPSG CRS 4489, 
+# and then back to WGS84
+qr_muni_points <- QR_muni_shape %>%
+  st_transform(4489) %>%
+  st_centroid() %>% 
+  st_transform(4326)
 
 #mapping the centroids
 leaflet(qr_muni_points) %>%
@@ -116,13 +121,28 @@ leaflet(qr_muni_points) %>%
   addCircles(label = ~label, fillColor = ~pal(migrants_per), stroke = FALSE, radius = 5000, fillOpacity = 1) %>% 
   addLegend(pal = pal, values = ~migrants_per, bins = 5, opacity = 0.7, title = "Percentage Immigrants <br> per Municipality (%)", position = "bottomright")
 
-#transforming the data sets into spatial
+```
 
-qr_muni_points_sp <- qr_muni_points %>%  st_transform(WGS84) %>% as_Spatial()
-QR_muni_shape_sp <- QR_muni_shape %>%  st_transform(WGS84)%>% as_Spatial()
+Transforming the data sets into spatial
+
+```{r, warning= FALSE}
+
+qr_muni_points_sp <- qr_muni_points %>%
+  st_transform(4489) %>%
+  as_Spatial()
+
+QR_muni_shape_sp <- QR_muni_shape %>%
+  st_transform(4489) %>%
+  as_Spatial()
+
+```
+
+Generate raster
+
+```{r, warning=FALSE}
 
 #this is creating an empty layer
-QR_muni_shape_sp_raster <- raster(QR_muni_shape_sp, res=10)
+QR_muni_shape_sp_raster <- raster(QR_muni_shape_sp, res=1000)
 
 #finds the values in between the the points
 gs <- gstat(formula=migrants_per~1, locations=qr_muni_points_sp)
@@ -132,6 +152,11 @@ idw_interp <- interpolate(QR_muni_shape_sp_raster, gs)
 
 #mask bounds the the interpolated data into your shape 
 idw_interp_clip <- mask(idw_interp, QR_muni_shape_sp)
+```
+
+Plot raster in leaflet
+
+```{r, warning=FALSE}
 
 leaflet(qr_muni_points) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
